@@ -162,8 +162,18 @@ public class LogParserParser {
             writer.write("<pre>");
         // Read bulks of lines, parse
         final int linesInLog = LogParserUtils.countLines(logFileLocation);
-        parseLogBody(build, writer, filePath, logFileLocation, linesInLog,
-                logger);
+        if (filePath.length() < Runtime.getRuntime().freeMemory() / 2) {
+            parseLogBody(build, writer, filePath, logFileLocation, linesInLog,
+                    logger);
+        } else {
+            // This log file is enormous. Don't attempt to parse it, or we might take down Jenkins.
+            logger.warning("Log file for build " + build.toString() + " was too large to attempt parsing.");
+            writer.write("This log file was too large to parse.");
+            writer.newLine();
+            writer.write("Either increase the memory allocated to the JVM, or find out why this log file was so large.");
+            writer.newLine();
+        }
+
 
         // Write parsed output, links, etc.
         //writeLogBody();
