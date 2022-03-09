@@ -6,13 +6,12 @@ import hudson.model.AbstractBuild;
 import hudson.model.Run;
 import hudson.remoting.VirtualChannel;
 
-import java.io.FileInputStream;
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.HashMap;
@@ -24,9 +23,9 @@ import java.util.regex.Pattern;
 
 public class LogParserParser {
 
-    final private HashMap<String, Integer> statusCount = new HashMap<String, Integer>();
-    final private HashMap<String, BufferedWriter> writers = new HashMap<String, BufferedWriter>();
-    final private HashMap<String, String> linkFiles = new HashMap<String, String>();
+    final private HashMap<String, Integer> statusCount = new HashMap<>();
+    final private HashMap<String, BufferedWriter> writers = new HashMap<>();
+    final private HashMap<String, String> linkFiles = new HashMap<>();
 
     final private String[] parsingRulesArray;
     final private Pattern[] compiledPatterns;
@@ -34,8 +33,8 @@ public class LogParserParser {
     final private List<String> extraTags;
 
     // if key is 3-ERROR it shows how many errors are in section 3
-    final private HashMap<String, Integer> statusCountPerSection = new HashMap<String, Integer>();
-    final private ArrayList<String> headerForSection = new ArrayList<String>();
+    final private HashMap<String, Integer> statusCountPerSection = new HashMap<>();
+    final private ArrayList<String> headerForSection = new ArrayList<>();
     private int sectionCounter = 0;
 
     final private LogParserDisplayConsts displayConstants = new LogParserDisplayConsts();
@@ -80,7 +79,7 @@ public class LogParserParser {
      * errorLinks.html, warningLinks.html, infoLinks.html
      */
     @Deprecated
-    public LogParserResult parseLog(final AbstractBuild build) throws IOException, InterruptedException {
+    public LogParserResult parseLog(final AbstractBuild<?, ?> build) throws IOException, InterruptedException {
         return this.parseLog((Run<?, ?>) build);
     }
 
@@ -90,10 +89,8 @@ public class LogParserParser {
         final Logger logger = Logger.getLogger(getClass().getName());
 
         // Get console log file
-        final File logFile = build.getLogFile();
-        final String logDirectory = logFile.getParent();
-        final String logFileLocation = logFile.getAbsolutePath();
-        final FilePath filePath = new FilePath(new File(logFileLocation));
+        final InputStream log = build.getLogInputStream();
+        final String logDirectory = build.getRootDir().getAbsolutePath();
 
         // Determine parsed log files
         final String parsedFilePath = logDirectory + "/log_content.html";
@@ -101,7 +98,7 @@ public class LogParserParser {
         final String warningLinksFilePath = logDirectory + "/logwarningLinks.html";
         final String infoLinksFilePath = logDirectory + "/loginfoLinks.html";
         final String debugLinksFilePath = logDirectory + "/logdebugLinks.html";
-        final Map<String, String> linksFilePathByExtraTags = new HashMap<String, String>();
+        final Map<String, String> linksFilePathByExtraTags = new HashMap<>();
         for (String extraTag : this.extraTags) {
             linksFilePathByExtraTags.put(extraTag, logDirectory + "/log" + extraTag + "Links.html");
         }
@@ -163,8 +160,8 @@ public class LogParserParser {
         // Read bulks of lines, parse
         final int linesInLog = LogParserUtils.countLines(logFileLocation);
         if (filePath.length() < Runtime.getRuntime().freeMemory() / 2) {
-            parseLogBody(build, writer, filePath, logFileLocation, linesInLog,
-                    logger);
+            parseLogBody(build, writer, log,
+                logger);
         } else {
             // This log file is enormous. Don't attempt to parse it, or we might take down Jenkins.
             logger.warning("Log file for build " + build.toString() + " was too large to attempt parsing.");
@@ -184,12 +181,12 @@ public class LogParserParser {
         writer.write(LogParserConsts.getHtmlClosingTags());
         writer.close(); // Close to unlock and flush to disk.
 
-        ((BufferedWriter) writers.get(LogParserConsts.ERROR)).close();
-        ((BufferedWriter) writers.get(LogParserConsts.WARNING)).close();
-        ((BufferedWriter) writers.get(LogParserConsts.INFO)).close();
-        ((BufferedWriter) writers.get(LogParserConsts.DEBUG)).close();
+        writers.get(LogParserConsts.ERROR).close();
+        writers.get(LogParserConsts.WARNING).close();
+        writers.get(LogParserConsts.INFO).close();
+        writers.get(LogParserConsts.DEBUG).close();
         for (String extraTag : this.extraTags) {
-            ((BufferedWriter) writers.get(extraTag)).close();
+            writers.get(extraTag).close();
         }
 
         // Build the reference html from the warnings/errors/info html files
@@ -209,12 +206,12 @@ public class LogParserParser {
         // Create result class
         final LogParserResult result = new LogParserResult();
         result.setHtmlLogFile(parsedFilePath);
-        result.setTotalErrors((Integer) statusCount.get(LogParserConsts.ERROR));
-        result.setTotalWarnings((Integer) statusCount.get(LogParserConsts.WARNING));
-        result.setTotalInfos((Integer) statusCount.get(LogParserConsts.INFO));
-        result.setTotalDebugs((Integer) statusCount.get(LogParserConsts.DEBUG));
+        result.setTotalErrors(statusCount.get(LogParserConsts.ERROR));
+        result.setTotalWarnings(statusCount.get(LogParserConsts.WARNING));
+        result.setTotalInfos(statusCount.get(LogParserConsts.INFO));
+        result.setTotalDebugs(statusCount.get(LogParserConsts.DEBUG));
         for (String extraTag : this.extraTags) {
-            result.putTotalCountsByExtraTag(extraTag, (Integer) statusCount.get(extraTag));
+            result.putTotalCountsByExtraTag(extraTag, statusCount.get(extraTag));
         }
         result.setErrorLinksFile(errorLinksFilePath);
         result.setWarningLinksFile(warningLinksFilePath);
@@ -274,7 +271,7 @@ public class LogParserParser {
     }
 
     public void incrementCounter(final String status) {
-        final int currentVal = (Integer) statusCount.get(status);
+        final int currentVal = statusCount.get(status);
         statusCount.put(status, currentVal + 1);
     }
 
@@ -282,17 +279,17 @@ public class LogParserParser {
             final int sectionNumber) {
         final String key = LogParserUtils.getSectionCountKey(status,
                 sectionNumber);
-        Integer currentValInteger = (Integer) statusCountPerSection.get(key);
+        Integer currentValInteger = statusCountPerSection.get(key);
         // No value - entered yet - initialize with 0
         if (currentValInteger == null) {
-            currentValInteger = new Integer(0);
+            currentValInteger = 0;
         }
         final int newVal = currentValInteger + 1;
         statusCountPerSection.put(key, newVal);
     }
 
     private String colorLine(final String line, final String status) {
-        String color = (String) displayConstants.getColorTable().get(status);
+        String color = displayConstants.getColorTable().get(status);
         if (color == null) {
             color = LogParserDisplayConsts.DEFAULT_COLOR;
         }
@@ -310,8 +307,8 @@ public class LogParserParser {
             final String effectiveStatus, final String status)
             throws IOException {
         // Add marker
-        final String statusCountStr = ((Integer) statusCount
-                .get(effectiveStatus)).toString();
+        final String statusCountStr = statusCount
+                .get(effectiveStatus).toString();
         final String marker = effectiveStatus + statusCountStr;
 
         // Add link
@@ -353,8 +350,8 @@ public class LogParserParser {
         return markedLine.toString();
     }
 
-    private void parseLogBody(final Run<?, ?> build, final BufferedWriter writer, final FilePath filePath, final
-            String logFileLocation, final int linesInLog, final Logger logger) throws IOException, InterruptedException {
+    private void parseLogBody(final Run<?, ?> build, final BufferedWriter writer, final InputStream log,
+                        final Logger logger) throws IOException, InterruptedException {
 
         // Logging information - start
         final String signature = build.getParent().getName() + "_build_"
@@ -362,23 +359,20 @@ public class LogParserParser {
         logger.log(Level.INFO, "LogParserParser: Start parsing : " + signature);
         final Calendar calendarStart = Calendar.getInstance();
 
-        final LogParserStatusComputer computer = new LogParserStatusComputer(
-                channel, filePath, parsingRulesArray, compiledPatterns,
-                linesInLog, signature);
-        final HashMap<String, String> lineStatusMatches = computer
-                .getComputedStatusMatches();
+        final HashMap<String, String> lineStatusMatches = channel.call(
+                new LogParserStatusComputer(log, parsingRulesArray, compiledPatterns, signature));
 
         // Read log file from start - line by line and apply the statuses as
         // found by the threads.
         final InputStreamReader streamReader = new InputStreamReader(
-                new FileInputStream( logFileLocation ),
+                build.getLogInputStream(),
                 build.getCharset() );
         final BufferedReader reader = new BufferedReader( streamReader );
         String line;
         String status;
         int line_num = 0;
         while ((line = reader.readLine()) != null) {
-            status = (String) lineStatusMatches.get(String.valueOf(line_num));
+            status = lineStatusMatches.get(String.valueOf(line_num));
             final String parsedLine = parseLine(line, status);
             // This is for displaying sections in the links part
             writer.write(parsedLine);
