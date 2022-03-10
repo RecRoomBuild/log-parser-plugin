@@ -9,6 +9,7 @@ import hudson.remoting.VirtualChannel;
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
@@ -157,8 +158,12 @@ public class LogParserParser {
 
         if (this.preformattedHtml)
             writer.write("<pre>");
-        // Read bulks of lines, parse
-        final int linesInLog = LogParserUtils.countLines(logFileLocation);
+        
+        // Grab absolute path to log file so we can check its length
+        final File logFile = build.getLogFile();
+        final String logFileLocation = logFile.getAbsolutePath();
+        final FilePath filePath = new FilePath(new File(logFileLocation));
+
         if (filePath.length() < Runtime.getRuntime().freeMemory() / 2) {
             parseLogBody(build, writer, log,
                 logger);
